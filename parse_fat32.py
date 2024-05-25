@@ -7,6 +7,7 @@ import struct
 # 8 bytes = Q
 
 SECTOR_SIZE = 0x200
+CLUSTER_SIZE = 0x1000
 MBR_SIGNATURE = "0xaa55"
 PARTITON_TABLE_SIZE = 0x40
 
@@ -135,15 +136,15 @@ def info_created_date(root_directory_enrty):
 '''
 # -----------------------------------------------------------------------------------|
 def print_parse_root_directory_enrty_data(root_directory_enrty):
-    print(f'[+] Directory Entry Information')
-    print(f'   [-] name: {(root_directory_enrty["name"].decode("ascii"))}')
-    print(f'   [-] extensions: {(root_directory_enrty["extensions"].decode("ascii"))}')
-    print(f'   [-] attribute: {hex(root_directory_enrty["attribute"])}')
-    print(f'   [-] created_time: {hex(root_directory_enrty["created_time"])}')
-    print(f'   [-] created_date: {hex(root_directory_enrty["created_date"])}')
-    print(f'   [-] first_cluster(high): {hex(root_directory_enrty["first_cluster(high)"])}')
-    print(f'   [-] first_cluster(low): {hex(root_directory_enrty["first_cluster(low)"])}')
-    print(f'   [-] file_size: {hex(root_directory_enrty["file_size"])}')
+    print(f'[+] Root Directory Entry Information')
+    print(f' [-] name: {(root_directory_enrty["name"].decode("ascii"))}')
+    print(f' [-] extensions: {(root_directory_enrty["extensions"].decode("ascii"))}')
+    print(f' [-] attribute: {hex(root_directory_enrty["attribute"])}')
+    print(f' [-] created_time: {hex(root_directory_enrty["created_time"])}')
+    print(f' [-] created_date: {hex(root_directory_enrty["created_date"])}')
+    print(f' [-] first_cluster(high): {hex(root_directory_enrty["first_cluster(high)"])}')
+    print(f' [-] first_cluster(low): {hex(root_directory_enrty["first_cluster(low)"])}')
+    print(f' [-] file_size: {hex(root_directory_enrty["file_size"])}')
 
 # -----------------------------------------------------------------------------------|
 def parse_root_directory_enrty_data(file_path, partition_entry_struct, boot_sector):
@@ -151,12 +152,13 @@ def parse_root_directory_enrty_data(file_path, partition_entry_struct, boot_sect
         f.seek(partition_entry_struct["first_sector"] +
                (boot_sector["reserved_sectors"] * boot_sector["bytes_per_sector"]) + 
                (boot_sector["number_of_fats"] * boot_sector["sectors_per_fat"] * boot_sector["bytes_per_sector"]))
-        root_directory_enrty_data = f.read(SECTOR_SIZE)
+        root_directory_enrty_data = f.read(CLUSTER_SIZE)
     
+    list_sub_dierctory_entry_offset = []
     entry_size = 0x20
     entry_loc = 0
    
-    while(entry_loc < 10):
+    while(entry_loc < 80):
         entry_offset = entry_loc * entry_size
         root_directory_enrty = {}
 
@@ -169,36 +171,102 @@ def parse_root_directory_enrty_data(file_path, partition_entry_struct, boot_sect
         root_directory_enrty["first_cluster(low)"] = struct.unpack("<H", root_directory_enrty_data[entry_offset+0x1a:entry_offset+0x1c])[0]
         root_directory_enrty["file_size"] = struct.unpack("<I", root_directory_enrty_data[entry_offset+0x1c:entry_offset+0x20])[0]
         
-        if ((root_directory_enrty["name"] != 0) & (root_directory_enrty["attribute"] != 0xf)):   
+        if (root_directory_enrty["name"] != (b'\x00' * len(root_directory_enrty["name"]))) and (root_directory_enrty["attribute"] != 0xf): 
+            print_parse_root_directory_enrty_data(root_directory_enrty)
+            sub_dierctory_entry_offset = root_directory_enrty["first_cluster(low)"] - 2
+            list_sub_dierctory_entry_offset.append(sub_dierctory_entry_offset)
+            parse_sub_directory_enrty_data(file_path, partition_entry_struct, boot_sector, list_sub_dierctory_entry_offset)
+            entry_loc += 1
+            continue
+
+        elif (root_directory_enrty["name"] != (b'\x00' * len(root_directory_enrty["name"]))) and (root_directory_enrty["attribute"] == 0xf):
+            lfn_entry = parse_root_lfn_entry_data(root_directory_enrty_data, entry_offset)
+            print_parse_root_lfn_entry_data(lfn_entry)
+            entry_loc += 1
+            continue
+
+        elif ((root_directory_enrty["name"][:2]) == b'\xE5'):
+            print(f'[+] Deleted Root Directory Entry Information')
             print_parse_root_directory_enrty_data(root_directory_enrty)
             entry_loc += 1
-            continue
-
-        elif root_directory_enrty["attribute"] == 0xf:
-            lfn_entry = parse_lfn_entry_data(root_directory_enrty_data, entry_offset)
-            print_parse_lfn_entry_data(lfn_entry)
-            entry_loc += 1
-            continue
-
-        elif root_directory_enrty["name"] != 0:   
-            entry_loc += 1
-            continue
+            continue 
 
         else:   
-            break             
+            break
+
+    return list_sub_dierctory_entry_offset             
 
 # -----------------------------------------------------------------------------------|
-def print_parse_lfn_entry_data(lfn_entry):
-    print(f' [+] LFN Entry ') 
-    print(f'   [-] sequence_number: 0x{(lfn_entry["sequence_number"]).hex()}')
-    print(f'   [-] attribute: 0x{(lfn_entry["attribute"]).hex()}')
-    print(f'   [-] name1: {(lfn_entry["name1"].decode("ascii"))}')
-    print(f'   [-] name2: {(lfn_entry["name2"].decode("ascii"))}')
-    print(f'   [-] name3: {(lfn_entry["name3"].decode("ascii"))}') 
+def print_parse_sub_directory_enrty_data(sub_directory_enrty):
+    print(f'[+] Sub Directory Entry Information')
+    print(f' [-] name: {(sub_directory_enrty["name"].decode("ascii") if all(32 <= x <= 126 for x in sub_directory_enrty["name"]) else sub_directory_enrty["name"].decode("utf-16"))}')
+    print(f' [-] extensions: {(sub_directory_enrty["extensions"].decode("ascii") if all(32 <= x <= 126 for x in sub_directory_enrty["extensions"]) else sub_directory_enrty["extensions"].decode("utf-16"))}')
+    print(f' [-] attribute: {hex(sub_directory_enrty["attribute"])}')
+    print(f' [-] created_time: {hex(sub_directory_enrty["created_time"])}')
+    print(f' [-] created_date: {hex(sub_directory_enrty["created_date"])}')
+    print(f' [-] first_cluster(high): {hex(sub_directory_enrty["first_cluster(high)"])}')
+    print(f' [-] first_cluster(low): {hex(sub_directory_enrty["first_cluster(low)"])}')
+    print(f' [-] file_size: {hex(sub_directory_enrty["file_size"])}')
+
+# -----------------------------------------------------------------------------------|
+def parse_sub_directory_enrty_data(file_path, partition_entry_struct, boot_sector, list_sub_dierctory_entry_offset):
+    with open(file_path, "rb") as f:
+        for i in range(len(list_sub_dierctory_entry_offset)):
+            f.seek(partition_entry_struct["first_sector"] +
+               (boot_sector["reserved_sectors"] * boot_sector["bytes_per_sector"]) + 
+               (boot_sector["number_of_fats"] * boot_sector["sectors_per_fat"] * boot_sector["bytes_per_sector"]) +
+               list_sub_dierctory_entry_offset[i] * CLUSTER_SIZE)
+            sub_directory_enrty_data = f.read(CLUSTER_SIZE)
+    
+        entry_size = 0x20
+        entry_loc = 0
+   
+        while(entry_loc < 80):
+            entry_offset = entry_loc * entry_size
+            sub_directory_enrty = {}
+
+            sub_directory_enrty["name"] = sub_directory_enrty_data[entry_offset:entry_offset+0x8]
+            sub_directory_enrty["extensions"] = sub_directory_enrty_data[entry_offset+0x8:entry_offset+0xb]
+            sub_directory_enrty["attribute"] = struct.unpack("<B", sub_directory_enrty_data[entry_offset+0xb:entry_offset+0xc])[0]
+            sub_directory_enrty["created_time"] = struct.unpack("<H", sub_directory_enrty_data[entry_offset+0xe:entry_offset+0x10])[0]
+            sub_directory_enrty["created_date"] = struct.unpack("<H", sub_directory_enrty_data[entry_offset+0x10:entry_offset+0x12])[0]
+            sub_directory_enrty["first_cluster(high)"] = struct.unpack("<H", sub_directory_enrty_data[entry_offset+0x14:entry_offset+0x16])[0]
+            sub_directory_enrty["first_cluster(low)"] = struct.unpack("<H", sub_directory_enrty_data[entry_offset+0x1a:entry_offset+0x1c])[0]
+            sub_directory_enrty["file_size"] = struct.unpack("<I", sub_directory_enrty_data[entry_offset+0x1c:entry_offset+0x20])[0]
+        
+            if (sub_directory_enrty["name"] != (b'\x00' * len(sub_directory_enrty["name"]))) and (sub_directory_enrty["attribute"] != 0xf): 
+                print_parse_sub_directory_enrty_data(sub_directory_enrty)
+                entry_loc += 1
+                continue
+
+            elif (sub_directory_enrty["name"] != (b'\x00' * len(sub_directory_enrty["name"]))) and (sub_directory_enrty["attribute"] == 0xf):
+                parse_sub_lfn_entry_data(sub_directory_enrty_data, entry_offset)
+                entry_loc += 1
+                continue
+
+            else:   
+                break
+          
+# -----------------------------------------------------------------------------------|
+def print_parse_root_lfn_entry_data(lfn_entry):
+    print(f' [+] Root LFN Entry Information') 
+    print(f'  [-] sequence_number: 0x{(lfn_entry["sequence_number"]).hex()}')
+    print(f'  [-] attribute: 0x{(lfn_entry["attribute"]).hex()}')
+    print(f'  [-] name1: {(lfn_entry["name1"].decode("ascii") if all(32 <= x <= 126 for x in lfn_entry["name1"]) else lfn_entry["name1"].decode("utf-16"))}')
+    print(f'  [-] name2: {(lfn_entry["name2"].decode("ascii") if all(32 <= x <= 126 for x in lfn_entry["name2"]) else lfn_entry["name1"].decode("utf-16"))}')
+    print(f'  [-] name3: {(lfn_entry["name3"].decode("ascii") if all(32 <= x <= 126 for x in lfn_entry["name3"]) else lfn_entry["name1"].decode("utf-16"))}') 
  
 # -----------------------------------------------------------------------------------|
-def parse_lfn_entry_data(root_directory_enrty_data, entry_offset):  
-    
+def print_parse_sub_lfn_entry_data(lfn_entry):
+    print(f'  [+] Sub LFN Entry Information') 
+    print(f'   [-] sequence_number: 0x{(lfn_entry["sequence_number"]).hex()}')
+    print(f'   [-] attribute: 0x{(lfn_entry["attribute"]).hex()}')
+    print(f'   [-] name1: {(lfn_entry["name1"].decode("ascii") if all(32 <= x <= 126 for x in lfn_entry["name1"]) else lfn_entry["name1"].decode("utf-16"))}')
+    print(f'   [-] name2: {(lfn_entry["name2"].decode("ascii") if all(32 <= x <= 126 for x in lfn_entry["name2"]) else lfn_entry["name1"].decode("utf-16"))}')
+    print(f'   [-] name3: {(lfn_entry["name3"].decode("ascii") if all(32 <= x <= 126 for x in lfn_entry["name3"]) else lfn_entry["name1"].decode("utf-16"))}')
+
+# -----------------------------------------------------------------------------------| 
+def parse_root_lfn_entry_data(root_directory_enrty_data, entry_offset):  
     lfn_entry ={}
     lfn_entry["sequence_number"] =  root_directory_enrty_data[entry_offset:entry_offset+0x1]
     lfn_entry["attribute"] = root_directory_enrty_data[entry_offset+0xb:entry_offset+0xc]
@@ -210,6 +278,25 @@ def parse_lfn_entry_data(root_directory_enrty_data, entry_offset):
     lfn_entry["name3"] =  bytes([x for x in name3 if x != 0xFF])
 
     return lfn_entry
+
+# -----------------------------------------------------------------------------------|
+def parse_sub_lfn_entry_data(sub_directory_enrty_data, entry_offset):  
+    lfn_entry ={}
+    lfn_entry["sequence_number"] =  sub_directory_enrty_data[entry_offset:entry_offset+0x1]
+    lfn_entry["attribute"] = sub_directory_enrty_data[entry_offset+0xb:entry_offset+0xc]
+    lfn_entry["checksum"] = struct.unpack("<B", sub_directory_enrty_data[entry_offset+0xd:entry_offset+0xe])[0]
+    name1 = sub_directory_enrty_data[entry_offset+0x1:entry_offset+0xb]
+    name2 = sub_directory_enrty_data[entry_offset+0xe:entry_offset+0x1a]
+    name3 = sub_directory_enrty_data[entry_offset+0x1c:entry_offset+0x20]
+    lfn_entry["name1"] =  bytes([x for x in name1 if x != 0xFF])
+    lfn_entry["name2"] =  bytes([x for x in name2 if x != 0xFF])
+    lfn_entry["name3"] =  bytes([x for x in name3 if x != 0xFF])
+
+    if lfn_entry["checksum"] == 0xff:   
+        return 0
+    
+    else:   
+        print_parse_sub_lfn_entry_data(lfn_entry)
 
 # -----------------------------------------------------------------------------------|
 def print_partition_entry_data(list_partition_entry):
