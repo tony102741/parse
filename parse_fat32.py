@@ -137,8 +137,8 @@ def info_created_date(root_directory_enrty):
 # -----------------------------------------------------------------------------------|
 def print_parse_root_directory_enrty_data(root_directory_enrty):
     print(f'[+] Root Directory Entry Information')
-    print(f' [-] name: {(root_directory_enrty["name"].decode("ascii"))}')
-    print(f' [-] extensions: {(root_directory_enrty["extensions"].decode("ascii"))}')
+    print(f' [-] name: 0x{(root_directory_enrty["name"].hex())}')
+    print(f' [-] extensions: 0x{(root_directory_enrty["extensions"].hex())}')
     print(f' [-] attribute: {hex(root_directory_enrty["attribute"])}')
     print(f' [-] created_time: {hex(root_directory_enrty["created_time"])}')
     print(f' [-] created_date: {hex(root_directory_enrty["created_date"])}')
@@ -199,8 +199,8 @@ def parse_root_directory_enrty_data(file_path, partition_entry_struct, boot_sect
 # -----------------------------------------------------------------------------------|
 def print_parse_sub_directory_enrty_data(sub_directory_enrty):
     print(f'[+] Sub Directory Entry Information')
-    print(f' [-] name: {(sub_directory_enrty["name"].decode("ascii") if all(32 <= x <= 126 for x in sub_directory_enrty["name"]) else sub_directory_enrty["name"].decode("utf-16"))}')
-    print(f' [-] extensions: {(sub_directory_enrty["extensions"].decode("ascii") if all(32 <= x <= 126 for x in sub_directory_enrty["extensions"]) else sub_directory_enrty["extensions"].decode("utf-16"))}')
+    print(f' [-] name: 0x{(sub_directory_enrty["name"].hex())}')
+    print(f' [-] extensions: 0x{(sub_directory_enrty["extensions"].hex())}')
     print(f' [-] attribute: {hex(sub_directory_enrty["attribute"])}')
     print(f' [-] created_time: {hex(sub_directory_enrty["created_time"])}')
     print(f' [-] created_date: {hex(sub_directory_enrty["created_date"])}')
@@ -377,7 +377,7 @@ def parse_mbr(file_path):
    
                
 # -----------------------------------------------------------------------------------    
-file_path = "C:\\Users\\JUNSUNG\\Desktop\\수업\\파일시스템\\USB_4GB.dd"
+file_path = "//Users//junsung//Desktop//abc.001"
 try:
     os.path.isfile(file_path) # file_path가 파일인지 확인
     mbr_data = parse_mbr(file_path) # file_path의 파일에서 MBR 데이터 파싱
